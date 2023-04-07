@@ -31,8 +31,6 @@ IP = os.getenv('IP')
 PORT = int(os.getenv('PORT'))
 LANG_ID = int(os.getenv('LANG_ID'))
 
-print(PORT)
-
 SUBSCRIBE_KEYWORD = 'subscribe_'
 UNSUBSCRIBE_KEYWORD = 'unsubscribe_'
 
