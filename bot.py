@@ -25,7 +25,7 @@ from locals import get_line
 
 load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-LOCAL = os.getenv('LOCAL')
+LOCAL = bool(int(os.getenv('LOCAL')))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 IP = os.getenv('IP')
 PORT = os.getenv('PORT')
