@@ -28,8 +28,10 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 LOCAL = bool(int(os.getenv('LOCAL')))
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 IP = os.getenv('IP')
-PORT = os.getenv('PORT')
+PORT = int(os.getenv('PORT'))
 LANG_ID = int(os.getenv('LANG_ID'))
+
+print(PORT)
 
 SUBSCRIBE_KEYWORD = 'subscribe_'
 UNSUBSCRIBE_KEYWORD = 'unsubscribe_'
@@ -452,8 +454,9 @@ def launch_bot():
         log.info('setting webhook on "{0}" listening on address "{1}:{2}"...'.
                 format(WEBHOOK_URL, IP, PORT))
         updater.start_webhook(listen=IP,
-                            port=int(PORT),
+                            port=PORT,
                             url_path=BOT_TOKEN,
-                            webhook_url=WEBHOOK_URL)
+                            webhook_url=WEBHOOK_URL,
+                            bootstrap_retries=3)
         bot.set_webhook(WEBHOOK_URL)
     updater.idle()
