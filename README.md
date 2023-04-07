@@ -1,4 +1,4 @@
-# GIVEAWAY BOT
+# TELEGRAM GIVEAWAY BOT
 
 Telegram bot for managing personalized telegram giveaways.
 
@@ -15,14 +15,21 @@ pip install -r .\requirements.txt
 
 Create .env file with the following parameters
 ```
-BOT_TOKEN
-LOCAL
-WEBHOOK_URL
-IP
-PORT
-CHAT_ID
+BOT_TOKEN=bot_token_from_bot_father
+LOCAL=[0/1] #0-server/1-local
+WEBHOOK_URL=surl
+PORT=[443, 80, 88, 8443]
+IP=ip
+MONGODB_CONNECTION_STRING=mongoDB_connection_string
+CHAT_ID=required_subscription_chat_id
+LANG_ID=[0/1] # 0-eng/1-ru
 ```
 
+launch
+```
+.\venv\Scripts\activate
+python main.py
+```
 ## Commands 
 
 [/g_create   Creates new giveaways.](https://github.com/dkjfo-lib/Tg_GiveawayBot#g_create)
