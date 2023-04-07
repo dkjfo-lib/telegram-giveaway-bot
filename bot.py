@@ -455,6 +455,5 @@ def launch_bot():
                             port=int(PORT),
                             url_path=BOT_TOKEN,
                             webhook_url=WEBHOOK_URL)
-        updater.bot.set_webhook(WEBHOOK_URL)
         bot.set_webhook(WEBHOOK_URL)
     updater.idle()
