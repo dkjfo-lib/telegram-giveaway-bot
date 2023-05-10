@@ -1,5 +1,4 @@
 from math import fabs
-from telegram.update import Update
 
 class UserInfo(object):
     

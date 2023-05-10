@@ -1,214 +1,80 @@
-from ntpath import join
 import os
 import os.path
 import sys
-from typing import List
 from uuid import uuid4
-from dotenv import load_dotenv
-import telegram
-from telegram.ext.updater import Updater
-from telegram.update import Update
-from telegram.ext.callbackcontext import CallbackContext
-from telegram.ext.commandhandler import CommandHandler
-from telegram.ext.messagehandler import MessageHandler
-from telegram.ext.conversationhandler import ConversationHandler
-from telegram.ext.filters import Filters
-from telegram.ext.defaults import Defaults
-from telegram.ext import CallbackQueryHandler
-from telegram.parsemode import ParseMode
-from database import giveaway_exists, load_giveaway, save_giveaway, delete_giveaway, get_giveaways_of_a_user
+from telegram import Update, constants
+from telegram.ext import ApplicationBuilder, ContextTypes, CallbackQueryHandler, MessageHandler, filters, ApplicationBuilder
+from database import giveaway_exists, load_giveaway, save_giveaway, delete_giveaway
 from giveaway import Giveaway
-from log import Log
 from userInfo import UserInfo
-from chatFunc import ChatFunc
 from locals import get_line
-
-load_dotenv()
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-LOCAL = bool(int(os.getenv('LOCAL')))
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-IP = os.getenv('IP')
-PORT = int(os.getenv('PORT'))
-LANG_ID = int(os.getenv('LANG_ID'))
-
-SUBSCRIBE_KEYWORD = 'subscribe_'
-UNSUBSCRIBE_KEYWORD = 'unsubscribe_'
-
-updater = Updater(BOT_TOKEN, use_context=True)
-bot = telegram.Bot(token=BOT_TOKEN)
-bot.defaults = Defaults(timeout=180)
-chatFunctions = ChatFunc(bot)
-log = Log()
-
+from conv_create_giveaway import conv_create_giveaway_handler
+from logger import logger
+from chatFunc import *
+from constants import *
 
 def restart_program():
     python = sys.executable
     os.execl(python, python, * sys.argv)
 
 
-def makeGiveawayPost(giveaway: Giveaway, update: Update):
-    button_s = [telegram.InlineKeyboardButton(
-        text=get_line(LANG_ID, 'btn_sub_txt'), callback_data=SUBSCRIBE_KEYWORD + str(giveaway.id))]
-    keyboard = telegram.InlineKeyboardMarkup([button_s])
-    text = '<strong>{0}</strong>\n{1}'.format(
-        giveaway.name, giveaway.description)
-    if giveaway.photoId:
-        bot.send_photo(
-            chat_id=update.effective_chat.id,
-            photo=giveaway.photoId,
-            caption=text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard,
-        )
-    else:
-        bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard,
-        )
-
-
-def makeGiveawayEndPost(giveaway: Giveaway, update: Update, winners: str):
-    text = get_line(LANG_ID, 'post_g_finished').format(giveaway.name, winners)
-    if giveaway.photoId:
-        bot.send_photo(
-            chat_id=update.effective_chat.id,
-            photo=giveaway.photoId,
-            caption=text,
-            parse_mode=ParseMode.HTML,
-        )
-    else:
-        bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=text,
-            parse_mode=ParseMode.HTML,
-        )
-
-
-def display_winners_win_rate(update: Update, giveaway: Giveaway):
-    # creating current giveaway and a list of all other giveaways of a user
-    other_user_giveaways = get_giveaways_of_a_user(update.effective_user.id)
-    for other_giveaway in other_user_giveaways:
-        if other_giveaway.id == giveaway.id:
-            other_user_giveaways.remove(other_giveaway)
-
-    giveaway_count = len(other_user_giveaways)
-    text = f'Из {giveaway_count} проведенных вами конкурсов:'
-    # calculating win rate of current giveaway winners
-    for winner in giveaway.winners:
-        user_win_count = 0
-        for other_giveaway in other_user_giveaways:
-            for other_giveaway_winner in other_giveaway.winners:
-                if other_giveaway_winner.id == winner.id:
-                    user_win_count += 1
-        text += f'\n{winner.name} победил {user_win_count} раз'
-    bot.sendMessage(chat_id=update.effective_user.id, text=text)
-
-
-def checkGiveawayId(update: Update, giveawayId: str):
-    # check params are correct
+async def checkGiveawayId(update: Update, context :ContextTypes.DEFAULT_TYPE, giveawayId: str):
+    """check params are correct"""
     if not giveawayId:
-        bot.sendMessage(chat_id=update.effective_chat.id,
+        await context.bot.sendMessage(chat_id=update.effective_chat.id,
                         text=get_line(LANG_ID, 'err_no_g_id'))
         return False
     if not giveaway_exists(giveawayId):
-        bot.sendMessage(chat_id=update.effective_chat.id,
+        await context.bot.sendMessage(chat_id=update.effective_chat.id,
                         text=get_line(LANG_ID, 'err_no_g_exists') % giveawayId)
         return False
     return True
 
 
-def start(update: Update, context: CallbackContext):
+def start(update: Update, context :ContextTypes.DEFAULT_TYPE):
     update.message.reply_text(get_line(LANG_ID, 'cmd_start'))
 
 
-def help(update: Update, context: CallbackContext):
+def help(update: Update, context :ContextTypes.DEFAULT_TYPE):
     update.message.reply_text(get_line(LANG_ID, 'cmd_help'))
 
 
-def restart(update: Update, context: CallbackContext):
+async def restart(update: Update, context :ContextTypes.DEFAULT_TYPE):
     if not LOCAL:
         return
-    bot.sendMessage(chat_id=update.effective_chat.id,
+    await context.bot.sendMessage(chat_id=update.effective_chat.id,
                     text=get_line(LANG_ID, 'cmd_restart'))
-    chatFunctions.deleteOriginalMessage(update)
+    await deleteOriginalMessage(update)
     restart_program()
 
 
-def log_command_and_extract_params(update: Update, command: str, keyword: str, params_count: int) -> bool:
-    log.info(f'processing command "{command}"')
+async def log_command_and_extract_params(update: Update, context :ContextTypes.DEFAULT_TYPE, command: str, keyword: str, params_count: int) -> bool:
+    logger.info(f'processing command "{command}"')
     command_params = command.replace(keyword, '').strip().split("''")
     # check params are correct
     if len(command_params) != params_count:
-        bot.sendMessage(chat_id=update.effective_chat.id,
+        await context.bot.sendMessage(chat_id=update.effective_chat.id,
                         text=f'ожидалось {params_count} параметров, было отпралено {len(command_params)}')
         return None
     return command_params
 
 
-def giveaway_create(update: Update, command: str, photo_id: str = None):
-    log.info('processing command "{0}"'.format(command))
-    giveawayInfo = command.replace('/g_create', '').strip().split("''")
-    # check params are correct
-    if len(giveawayInfo) != 3:
-        bot.sendMessage(chat_id=update.effective_chat.id,
-                        text=get_line(LANG_ID, 'err_wr_create_params') % len(giveawayInfo))
-        return
-    if not giveawayInfo[1]:
-        bot.sendMessage(chat_id=update.effective_chat.id,
-                        text=get_line(LANG_ID, 'err_no_g_name'))
-        return
-    if not giveawayInfo[2]:
-        bot.sendMessage(chat_id=update.effective_chat.id,
-                        text=get_line(LANG_ID, 'err_no_g_descr'))
-        return
-    if (not giveawayInfo[0]) or (not giveawayInfo[0].isdigit()):
-        bot.sendMessage(chat_id=update.effective_chat.id,
-                        text=get_line(LANG_ID, 'err_no_g_NoW'))
-        return
-    if int(giveawayInfo[0]) < 1:
-        bot.sendMessage(chat_id=update.effective_chat.id,
-                        text=get_line(LANG_ID, 'err_wr_g_NoW'))
-        return
-
-    newGiveaway = Giveaway(
-        author=update.effective_user.id,
-        authorNick=update.effective_user.name,
-        name=giveawayInfo[1],
-        description=giveawayInfo[2],
-        NumberOfWinners=int(giveawayInfo[0]),
-        id=uuid4(),
-        subscribers=[],
-        ended=False,
-        winners=[],
-        photoId=photo_id
-    )
-    save_giveaway(newGiveaway)
-
-    makeGiveawayPost(newGiveaway, update)
-    bot.sendMessage(chat_id=newGiveaway.author,
-                    text=get_line(LANG_ID, 'msg_g_created').
-                    format(newGiveaway.id, update.effective_chat.id, newGiveaway.numberOfWinners, newGiveaway.name, newGiveaway.description))
-    chatFunctions.deleteOriginalMessage(update)
-
-
-def giveaway_Delete(update: Update, command: str):
-    log.info('processing command "{0}"'.format(command))
+async def giveaway_Delete(update: Update, context :ContextTypes.DEFAULT_TYPE, command: str):
+    logger.info('processing command "{0}"'.format(command))
     giveawayId = command.replace('/g_delete', '').strip()
     if not checkGiveawayId(update, giveawayId):
         return
     giveaway = load_giveaway(giveawayId)
     if giveaway.is_Author(update.effective_user.id):
         delete_giveaway(giveawayId)
-        bot.sendMessage(chat_id=giveaway.author,
+        await context.bot.sendMessage(chat_id=giveaway.author,
                         text=f'Розыгрыш {giveaway.id} успешно удален')
     else:
-        chatFunctions.sendDontHavePermission(update, giveaway, LANG_ID)
+        await sendDontHavePermission(update, giveaway, LANG_ID)
 
 
-def giveaway_post(update: Update, command: str):
-    log.info('processing command "{0}"'.format(command))
+async def giveaway_post(update: Update, context :ContextTypes.DEFAULT_TYPE, command: str):
+    logger.info('processing command "{0}"'.format(command))
     giveawayId = command.replace('/g_post', '').strip()
     if not checkGiveawayId(update, giveawayId):
         return
@@ -216,12 +82,12 @@ def giveaway_post(update: Update, command: str):
 
     if (not update.effective_user) or (giveaway.is_Author(update.effective_user.id)):
         makeGiveawayPost(giveaway, update)
-        bot.sendMessage(chat_id=giveaway.author,
+        await context.bot.sendMessage(chat_id=giveaway.author,
                         text=get_line(LANG_ID, 'msg_g_post_created').
                         format(giveaway.id, update.effective_chat.id))
     else:
-        chatFunctions.sendDontHavePermission(update, giveaway, LANG_ID)
-    chatFunctions.deleteOriginalMessage(update)
+        await sendDontHavePermission(update, giveaway, LANG_ID)
+    await deleteOriginalMessage(update)
 
 
 def divide_chunks(list, chunk_length: int):
@@ -236,8 +102,8 @@ def parseNameHTML(user: UserInfo):
         return "<a href='tg://user?id=%s'>%s</a>" % (user.id, user.name)
 
 
-def giveaway_subs(update: Update, command: str):
-    log.info('processing command "{0}"'.format(command))
+async def giveaway_subs(update: Update, context :ContextTypes.DEFAULT_TYPE, command: str):
+    logger.info('processing command "{0}"'.format(command))
     giveawayId = command.replace('/g_subs', '').strip()
     if not checkGiveawayId(update, giveawayId):
         return
@@ -245,9 +111,9 @@ def giveaway_subs(update: Update, command: str):
     if (not update.effective_user) or (update.effective_user.id == giveaway.author):
 
         subbedToChannel_subs = giveaway.onlySubbedToChannel(
-            bot, "chat_id", giveaway.subscribers)
-        bot.send_message(chat_id=update.effective_chat.id,
-                         parse_mode=ParseMode.HTML,
+            context.bot, "chat_id", giveaway.subscribers)
+        await context.bot.send_message(chat_id=update.effective_chat.id,
+                         parse_mode=constants.ParseMode.HTML,
                          text=get_line(LANG_ID, 'cmd_giveaway_subs').format(str(len(subbedToChannel_subs))))
 
         subs_list = [parseNameHTML(sub) for sub in subbedToChannel_subs]
@@ -255,33 +121,33 @@ def giveaway_subs(update: Update, command: str):
         for subs_chunk in subs_chunks:
             subs_tags = '\n'.join(subs_chunk)
             print(subs_tags)
-            bot.send_message(chat_id=update.effective_chat.id,
-                             parse_mode=ParseMode.HTML,
+            await context.bot.send_message(chat_id=update.effective_chat.id,
+                             parse_mode=constants.ParseMode.HTML,
                              text=subs_tags)
     else:
-        chatFunctions.sendDontHavePermission(update, giveaway, LANG_ID)
-    chatFunctions.deleteOriginalMessage(update)
+        await sendDontHavePermission(update, giveaway, LANG_ID)
+    await deleteOriginalMessage(update)
 
 
-def giveaway_finish(update: Update, command: str):
-    log.info('processing command "{0}"'.format(command))
+async def giveaway_finish(update: Update, context :ContextTypes.DEFAULT_TYPE, command: str):
+    logger.info('processing command "{0}"'.format(command))
     giveawayId = command.replace('/g_finish', '').strip()
     if not checkGiveawayId(update, giveawayId):
         return
     giveaway = load_giveaway(giveawayId)
     if (not update.effective_user) or (update.effective_user.id == giveaway.author):
         if (not giveaway.ended):
-            giveaway.endGiveaway(bot)
-            display_winners_win_rate(update, giveaway)
+            giveaway.endGiveaway(context.bot)
+            await display_winners_win_rate(update, giveaway)
         winners = '\n'.join([parseNameHTML(sub) for sub in giveaway.winners])
-        makeGiveawayEndPost(giveaway, update, winners)
+        await makeGiveawayEndPost(giveaway, update, winners)
         save_giveaway(giveaway)
-        chatFunctions.deleteOriginalMessage(update)
+        await deleteOriginalMessage(update)
     else:
-        chatFunctions.sendDontHavePermission(update, giveaway, LANG_ID)
+        await sendDontHavePermission(update, giveaway, LANG_ID)
 
 
-def giveaway_reroll_winner(update: Update, command: str):
+async def giveaway_reroll_winner(update: Update, context :ContextTypes.DEFAULT_TYPE, command: str):
     command_params = log_command_and_extract_params(
         update, command, '/g_reroll', 2)
     if not command_params:
@@ -292,25 +158,25 @@ def giveaway_reroll_winner(update: Update, command: str):
         return
     giveaway = load_giveaway(giveawayId)
     if (not update.effective_user) or (not update.effective_chat.id == update.effective_user.id):
-        bot.send_message(chat_id=update.effective_chat.id,
+        await context.bot.send_message(chat_id=update.effective_chat.id,
                          text='Комманда доступна только в чате бота')
-    elif chatFunctions.isChatWithAuthor(update, giveaway):
-        giveaway.reroll_user(bot, user_id)
+    elif isChatWithAuthor(update, giveaway):
+        giveaway.reroll_user(context.bot, user_id)
         winners = '\n'.join([parseNameHTML(sub) for sub in giveaway.winners])
-        makeGiveawayEndPost(giveaway, update, winners)
-        display_winners_win_rate(update, giveaway)
+        await makeGiveawayEndPost(giveaway, update, winners)
+        await display_winners_win_rate(update, giveaway)
         save_giveaway(giveaway)
     else:
-        chatFunctions.sendDontHavePermission(update, giveaway, LANG_ID)
-    chatFunctions.deleteOriginalMessage(update)
+        await sendDontHavePermission(update, giveaway, LANG_ID)
+    await deleteOriginalMessage(update)
 
 
-def giveaway_edit(update: Update, command: str, photo_id: str = None):
-    log.info('processing command "{0}"'.format(command))
+async def giveaway_edit(update: Update, context :ContextTypes.DEFAULT_TYPE, command: str, photo_id: str = None):
+    logger.info('processing command "{0}"'.format(command))
     giveawayInfo = command.replace('/g_edit', '').strip().split("''")
     # check params are correct
     if len(giveawayInfo) != 4:
-        bot.sendMessage(chat_id=update.effective_chat.id,
+        await context.bot.sendMessage(chat_id=update.effective_chat.id,
                         text=get_line(LANG_ID, 'err_wr_edit_params') % len(giveawayInfo))
         return
     giveawayId = giveawayInfo[0]
@@ -320,19 +186,19 @@ def giveaway_edit(update: Update, command: str, photo_id: str = None):
     if not checkGiveawayId(update, giveawayId):
         return
     if not newName:
-        bot.sendMessage(chat_id=update.effective_chat.id,
+        await context.bot.sendMessage(chat_id=update.effective_chat.id,
                         text=get_line(LANG_ID, 'err_no_g_name'))
         return
     if not newDescription:
-        bot.sendMessage(chat_id=update.effective_chat.id,
+        await context.bot.sendMessage(chat_id=update.effective_chat.id,
                         text=get_line(LANG_ID, 'err_no_g_descr'))
         return
     if (not newNoW) or (not newNoW.isdigit()):
-        bot.sendMessage(chat_id=update.effective_chat.id,
+        await context.bot.sendMessage(chat_id=update.effective_chat.id,
                         text=get_line(LANG_ID, 'err_no_g_NoW'))
         return
     if int(newNoW) < 1:
-        bot.sendMessage(chat_id=update.effective_chat.id,
+        await context.bot.sendMessage(chat_id=update.effective_chat.id,
                         text=get_line(LANG_ID, 'err_wr_g_NoW'))
         return
 
@@ -345,12 +211,12 @@ def giveaway_edit(update: Update, command: str, photo_id: str = None):
         save_giveaway(giveaway)
         makeGiveawayPost(giveaway, update)
     else:
-        chatFunctions.sendDontHavePermission(update, giveaway, LANG_ID)
-    chatFunctions.deleteOriginalMessage(update)
+        await sendDontHavePermission(update, giveaway, LANG_ID)
+    await deleteOriginalMessage(update)
 
 
-def callback_query_handler(update: Update, context: CallbackContext):
-    log.info('processing callback "{0}"'.format(update.callback_query.data))
+def callback_query_handler(update: Update, context :ContextTypes.DEFAULT_TYPE):
+    logger.info('processing callback "{0}"'.format(update.callback_query.data))
     update.callback_query.answer("Вы участвуете!")
     callbackData = update.callback_query.data
     if callbackData.startswith(SUBSCRIBE_KEYWORD):
@@ -360,18 +226,18 @@ def callback_query_handler(update: Update, context: CallbackContext):
         # check subscription
         isSubbedToGiveaway = giveaway.isSubbedToGiveaway(user)
         if not isSubbedToGiveaway:
-            log.info('User {0}'.format(user.name))
+            logger.info('User {0}'.format(user.name))
             giveaway.subscribers.append(user)
             save_giveaway(giveaway)
-        log.info(
+        logger.info(
             f'user:{user.name} alreadySubbedToGiveaway: {isSubbedToGiveaway}')
 
 
-def displayGiveawayInfo(update: Update, context: CallbackContext):
+def displayGiveawayInfo(update: Update, context :ContextTypes.DEFAULT_TYPE):
     load_giveaway()
 
 
-def forwarder(update: Update, context: CallbackContext):
+async def forwarder(update: Update, context :ContextTypes.DEFAULT_TYPE):
 
     text: str = ''
     photoId: str = ''
@@ -384,77 +250,69 @@ def forwarder(update: Update, context: CallbackContext):
     if len(update.effective_message.photo) > 0:
         photoId = update.effective_message.photo[0].file_id
 
-    log.info('Processing new message\n\nText:"{0}"\n\nphotoId:"{1}"\n'.
+    logger.info('Processing new message\n\nText:"{0}"\n\nphotoId:"{1}"\n'.
              format(text, photoId))
 
     if not text:
         return
 
     if text.startswith('/restart'):
-        log.info('launching restart')
+        logger.info('launching restart')
         restart(update, context)
 
     if text.startswith('/start'):
-        log.info('launching start')
-        start(update, context)
+        logger.info('launching start')
+        await start(update, context)
 
     if text.startswith('/help'):
-        log.info('launching help')
-        help(update, context)
+        logger.info('launching help')
+        await help(update, context)
 
-    if text.startswith('/g_create'):
-        log.info('launching create')
-        giveaway_create(update, text, photoId)
+    # if text.startswith('/g_create'):
+    #     logger.info('launching create')
+    #     await giveaway_create(update, context, text, photoId)
 
     if text.startswith('/g_edit'):
-        log.info('launching edit')
-        giveaway_edit(update, text, photoId)
+        logger.info('launching edit')
+        await giveaway_edit(update, context, text, photoId)
 
     if text.startswith('/g_post'):
-        log.info('launching post')
-        giveaway_post(update, text)
+        logger.info('launching post')
+        await giveaway_post(update, context, text)
 
     if text.startswith('/g_subs'):
-        log.info('launching subs')
-        giveaway_subs(update, text)
+        logger.info('launching subs')
+        await giveaway_subs(update, context, text)
 
     if text.startswith('/g_finish'):
-        log.info('launching finish')
-        giveaway_finish(update, text)
+        logger.info('launching finish')
+        await giveaway_finish(update, context, text)
 
     if text.startswith('/g_delete'):
-        log.info('launching delete')
-        giveaway_Delete(update, text)
+        logger.info('launching delete')
+        await giveaway_Delete(update, context, text)
 
     if text.startswith('/g_reroll'):
-        log.info('launching reroll')
-        giveaway_reroll_winner(update, text)
+        logger.info('launching reroll')
+        await giveaway_reroll_winner(update, context, text)
 
 def launch_bot():
+    logger.info(f'creating bot with token:"{BOT_TOKEN}"...')
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application.add_handler(CallbackQueryHandler(callback_query_handler))
+    application.add_handler(MessageHandler(filters.Regex("^(/start|/g_edit|/g_post|/g_subs|/g_finish|/g_delete|/g_reroll)$"), forwarder))
+    application.add_handler(conv_create_giveaway_handler)
+    logger.info(f'bot successfully created.')
 
-    # updater.dispatcher.add_handler(ConversationHandler(
-    #         entry_points=[CallbackQueryHandler(callback_query_handler)],
-    #         states={
-    #             1: [MessageHandler(Filters.text, name_input_by_user)],
-    #             2: [CallbackQueryHandler(button_click_handler)]
-    #         },
-    #         fallbacks=[CommandHandler('cancel', cancel)],
-    #         per_user=True
-    #     ))
-    updater.dispatcher.add_handler(CallbackQueryHandler(callback_query_handler))
-    updater.dispatcher.add_handler(MessageHandler(Filters.all, forwarder))
-
-    log.info('LOCAL:%s' % LOCAL)
     if LOCAL:
-        log.info('polling messages...')
-        updater.start_polling()
+        logger.info('polling messages...')
+        application.run_polling()
     else:
-        log.info('setting webhook on "{0}" listening on address "{1}:{2}"...'.
-                format(WEBHOOK_URL, IP, PORT))
-        updater.start_webhook(listen=IP,
-                            port=PORT,
-                            url_path=BOT_TOKEN,
-                            webhook_url=WEBHOOK_URL,
-                            bootstrap_retries=3)
-        bot.set_webhook(WEBHOOK_URL)
-    updater.idle()
+        logger.info(
+            f'setting webhook on "{WEBHOOK_URL}" listening on address "{IP}:{PORT}"...')
+        application.run_webhook(
+            listen=IP,
+            port=PORT,
+            url_path=BOT_TOKEN,
+            webhook_url=WEBHOOK_URL)
+        logger.info(f'Webhook deployed!')
