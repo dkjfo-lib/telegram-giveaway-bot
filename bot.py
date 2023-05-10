@@ -1,16 +1,15 @@
 import os
 import os.path
 import sys
-from uuid import uuid4
 from telegram import Update, constants
 from telegram.ext import ApplicationBuilder, ContextTypes, CallbackQueryHandler, MessageHandler, filters, ApplicationBuilder
 from database import giveaway_exists, load_giveaway, save_giveaway, delete_giveaway
-from giveaway import Giveaway
 from userInfo import UserInfo
 from locals import get_line
-from conv_create_giveaway import conv_create_giveaway_handler
+from commands.conv_create_giveaway import conv_create_giveaway_handler
+from commands.conv_delete_giveaway import conv_delete_giveaway_handler
 from logger import logger
-from chatFunc import *
+from commands.chatFunc import *
 from constants import *
 
 def restart_program():
@@ -233,10 +232,6 @@ def callback_query_handler(update: Update, context :ContextTypes.DEFAULT_TYPE):
             f'user:{user.name} alreadySubbedToGiveaway: {isSubbedToGiveaway}')
 
 
-def displayGiveawayInfo(update: Update, context :ContextTypes.DEFAULT_TYPE):
-    load_giveaway()
-
-
 async def forwarder(update: Update, context :ContextTypes.DEFAULT_TYPE):
 
     text: str = ''
@@ -268,10 +263,6 @@ async def forwarder(update: Update, context :ContextTypes.DEFAULT_TYPE):
         logger.info('launching help')
         await help(update, context)
 
-    # if text.startswith('/g_create'):
-    #     logger.info('launching create')
-    #     await giveaway_create(update, context, text, photoId)
-
     if text.startswith('/g_edit'):
         logger.info('launching edit')
         await giveaway_edit(update, context, text, photoId)
@@ -300,8 +291,9 @@ def launch_bot():
     logger.info(f'creating bot with token:"{BOT_TOKEN}"...')
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     application.add_handler(CallbackQueryHandler(callback_query_handler))
-    application.add_handler(MessageHandler(filters.Regex("^(/start|/g_edit|/g_post|/g_subs|/g_finish|/g_delete|/g_reroll)$"), forwarder))
+    application.add_handler(MessageHandler(filters.Regex("^(/start|/g_edit|/g_post|/g_subs|/g_finish|/g_reroll)$"), forwarder))
     application.add_handler(conv_create_giveaway_handler)
+    application.add_handler(conv_delete_giveaway_handler)
     logger.info(f'bot successfully created.')
 
     if LOCAL:

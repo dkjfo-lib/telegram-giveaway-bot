@@ -59,12 +59,12 @@ def deserialize_giveaway(giveaway_info) -> Giveaway:
     return giveaway
 
 
-def giveaway_exists(giveawayId: str):
+def giveaway_exists(giveawayId: str, user_id :int):
     collection = get_collection()
-    return collection.count_documents({'_id': giveawayId}, limit=1) != 0
+    return collection.count_documents({'_id': giveawayId, 'author': user_id}, limit=1) != 0
 
 
-def get_giveaways_of_a_user(user_id: str):
+def get_giveaways_of_a_user(user_id: int):
     collection = get_collection()
     giveaways_info = collection.find({'author': user_id})
     giveaways = [deserialize_giveaway(giveaway_info)
@@ -81,7 +81,7 @@ def delete_giveaway(giveawayId: str):
 def save_giveaway(giveaway: Giveaway):
     collection = get_collection()
     new_values = serialize_giveaway(giveaway)
-    if giveaway_exists(str(giveaway.id)):
+    if giveaway_exists(str(giveaway.id), giveaway.author):
         query = {"_id": str(giveaway.id)}
         set_new_values = {"$set": new_values}
         collection.update_one(query, set_new_values)

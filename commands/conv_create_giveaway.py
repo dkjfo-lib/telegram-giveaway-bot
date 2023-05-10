@@ -2,7 +2,7 @@ import json
 from uuid import uuid4
 from telegram import ReplyKeyboardRemove, Update
 from telegram.ext import ContextTypes, filters, ConversationHandler, CommandHandler, MessageHandler
-from chatFunc import *
+from commands.chatFunc import *
 from database import save_giveaway
 
 
@@ -10,7 +10,7 @@ WAIT_FOR_NAME, WAIT_FOR_DESCRIPTION, WAIT_FOR_PHOTO, WAIT_FOR_NOW = range(4)
 
 
 async def start_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await sendMessage(update, "Please enter the name of your giveaway.")
+    await sendMessage(update, "\nLets create a new giveaway!\nPlease enter the name of your giveaway.\n\nAt any stage send \"/cancel\" to stop the process.")
     return WAIT_FOR_NAME
 
 
@@ -81,15 +81,15 @@ async def create_giveaway(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await sendMessage(update, f"Excellent! Your giveaway is now created!")
     await makeGiveawayPost(update, context, newGiveaway)
     await context.bot.sendMessage(chat_id=newGiveaway.author,
-                    text=get_line(LANG_ID, 'msg_g_created').
-                    format(newGiveaway.id, update.effective_chat.id, newGiveaway.numberOfWinners, newGiveaway.name, newGiveaway.description))
+                                  text=get_line(LANG_ID, 'msg_g_created').
+                                  format(newGiveaway.id, update.effective_chat.id, newGiveaway.numberOfWinners, newGiveaway.name, newGiveaway.description))
     return ConversationHandler.END
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels and ends the conversation."""
     await update.message.reply_text(
-        "See you!", reply_markup=ReplyKeyboardRemove()
+        "Creation of a giveaway is canceled", reply_markup=ReplyKeyboardRemove()
     )
     return ConversationHandler.END
 
@@ -97,8 +97,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 conv_create_giveaway_handler = ConversationHandler(
     entry_points=[CommandHandler("g_create", start_name)],
     states={
-        WAIT_FOR_NAME: [MessageHandler(filters.ALL, start_description)],
-        WAIT_FOR_DESCRIPTION: [MessageHandler(filters.ALL, start_photo)],
+        WAIT_FOR_NAME: [MessageHandler(filters.Regex('^(?!/cancel)'), start_description)],
+        WAIT_FOR_DESCRIPTION: [MessageHandler(filters.Regex('^(?!/cancel)'), start_photo)],
         WAIT_FOR_PHOTO: [
             MessageHandler(filters.PHOTO, start_NOW),
             CommandHandler("skip", skip_start_NOW),
